@@ -4,6 +4,7 @@
 
 ;; Author     : Malcolm Matalka <malcolm@terrateam.io>
 ;; Maintainer : Malcolm Matalka <malcolm@terrateam.io>
+;; Package-Requires: ((emacs "29.1") tuareg)
 ;; Created    : January 2024
 ;; Keywords   : ocaml languages tree-sitter
 
@@ -14,6 +15,7 @@
 
 (require 'treesit)
 (require 'find-file)
+(require 'tuareg)
 
 (defcustom ocaml-ts-mode-other-file-alist
   '(("\\.mli\\'" (".ml"))
@@ -51,6 +53,12 @@ See `ff-other-file-alist'."
   :version "29.1"
   :type 'integer
   :safe 'integerp
+  :group 'ocaml)
+
+(defcustom ocaml-ts-mode-tuareg-indentation t
+  "Use tuareg indentation engine in `ocaml-ts-mode'."
+  :version "29.1"
+  :type 'boolean
   :group 'ocaml)
 
 (defvar ocaml-ts-mode--syntax-table
@@ -225,7 +233,24 @@ See `ff-other-file-alist'."
   (treesit-parser-create 'ocaml)
 
   ;; Indent.
-  (setq-local treesit-simple-indent-rules (ocaml-ts--indent-rules 'ocaml))
+  (if ocaml-ts-mode-tuareg-indentation
+      (progn
+        (setq-local syntax-propertize-function #'tuareg-syntax-propertize)
+        (setq-local parse-sexp-ignore-comments t)
+        (smie-setup tuareg-smie-grammar #'tuareg-smie-rules
+                    :forward-token #'tuareg-smie-forward-token
+                    :backward-token #'tuareg-smie-backward-token)
+        (when (boundp 'smie--hanging-eolp-function)
+          ;; FIXME: As its name implies, smie--hanging-eolp-function
+          ;; is not to be used by packages like us, but SMIE's maintainer
+          ;; hasn't provided any alternative so far :-(
+          (add-function :before (local 'smie--hanging-eolp-function)
+                        #'tuareg--hanging-eolp-advice))
+        (add-function :around (local 'indent-line-function)
+                      #'tuareg--indent-line)
+        (add-hook 'smie-indent-functions #'tuareg-smie--args nil t)
+        (add-hook 'smie-indent-functions #'tuareg-smie--inside-string nil t))
+    (setq-local treesit-simple-indent-rules (ocaml-ts--indent-rules 'ocaml)))
 
   (setq-local comment-start "(* ")
   (setq-local comment-end " *)")
@@ -243,7 +268,7 @@ See `ff-other-file-alist'."
         ff-other-file-alist ocaml-ts-mode-other-file-alist)
 
   (setq-local treesit-language-at-point-function
-                  (lambda (_pos) 'ocaml))
+              (lambda (_pos) 'ocaml))
 
   (treesit-major-mode-setup))
 
@@ -261,7 +286,6 @@ See `ff-other-file-alist'."
   ;; Indent.
   (setq-local treesit-simple-indent-rules (ocaml-ts--indent-rules 'ocaml-interface))
 
-
   (setq-local comment-start "(* ")
   (setq-local comment-end " *)")
   (setq-local comment-start-skip "(\\*+[ \t]*")
@@ -278,7 +302,7 @@ See `ff-other-file-alist'."
         ff-other-file-alist ocaml-ts-mode-other-file-alist)
 
   (setq-local treesit-language-at-point-function
-                  (lambda (_pos) 'ocaml-interface))
+              (lambda (_pos) 'ocaml-interface))
 
   (treesit-major-mode-setup))
 
