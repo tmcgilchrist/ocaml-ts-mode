@@ -14,6 +14,8 @@
 ;;; Code:
 
 (require 'treesit)
+
+;; TODO Move this into tuareg / top-level OCaml mode
 (require 'find-file)
 (require 'tuareg)
 
@@ -37,10 +39,11 @@ See `ff-other-file-alist'."
     map)
   "Keymap used in `ocamli-ts-mode'.")
 
-;;;###autoload
-(defun ocaml-ts-mode-ocamlformat-before-save ()
-  (when (memq major-mode '(ocaml-ts-mode ocamli-ts-mode))
-    (ocamlformat)))
+;; TODO This should occur via LSP
+;; ;;;###autoload
+;; (defun ocaml-ts-mode-ocamlformat-before-save ()
+;;   (when (memq major-mode '(ocaml-ts-mode ocamli-ts-mode))
+;;     (ocamlformat)))
 
 (declare-function treesit-parser-create "treesit.c")
 (declare-function treesit-induce-sparse-tree "treesit.c")
@@ -94,17 +97,19 @@ See `ff-other-file-alist'."
   '("and"
     "as"
     "assert"
-    ;; "asr"
+    "asr"
     "begin"
     "class"
     "constraint"
     "do"
     "done"
     "downto"
+    "effect"
     "else"
     "end"
     "exception"
     "external"
+    ;; "false"
     "for"
     "fun"
     "function"
@@ -114,16 +119,16 @@ See `ff-other-file-alist'."
     "include"
     "inherit"
     "initializer"
-    ;; "land"
+    "land"
     "lazy"
     "let"
-    ;; "lor"
-    ;; "lsl"
-    ;; "lsr"
-    ;; "lxor"
+    "lour"
+    "lsl"
+    "lsr"
+    "lxor"
     "match"
     "method"
-    ;; "mod"
+    "mod"
     "module"
     "mutable"
     "new"
@@ -131,13 +136,14 @@ See `ff-other-file-alist'."
     "object"
     "of"
     "open"
-    ;; "or"
+    "or"
     "private"
     "rec"
     "sig"
     "struct"
     "then"
     "to"
+    ;; "true"
     "try"
     "type"
     "val"
@@ -210,16 +216,24 @@ See `ff-other-file-alist'."
    :override t
    '((ERROR) @font-lock-warning-face)))
 
-;; (defun ocaml-ts-mode--defun-name (node)
-;;   "Return the defun name of NODE.
-;; Return nil if there is no name or if NODE is not a defun node."
-;;   (pcase (treesit-node-type node)
-;;     ((or "pair" "object")
-;;      (string-trim (treesit-node-text
-;;                    (treesit-node-child-by-field-name
-;;                     node "key")
-;;                    t)
-;;                   "\"" "\""))))
+;; TODO Move this into tuareg / top-level OCaml mode
+(defun tuareg-smie-setup ()
+  (progn
+    (setq-local syntax-propertize-function #'tuareg-syntax-propertize)
+    (setq-local parse-sexp-ignore-comments t)
+    (smie-setup tuareg-smie-grammar #'tuareg-smie-rules
+                :forward-token #'tuareg-smie-forward-token
+                :backward-token #'tuareg-smie-backward-token)
+    (when (boundp 'smie--hanging-eolp-function)
+      ;; FIXME: As its name implies, smie--hanging-eolp-function
+      ;; is not to be used by packages like us, but SMIE's maintainer
+      ;; hasn't provided any alternative so far :-(
+      (add-function :before (local 'smie--hanging-eolp-function)
+                    #'tuareg--hanging-eolp-advice))
+    (add-function :around (local 'indent-line-function)
+                  #'tuareg--indent-line)
+    (add-hook 'smie-indent-functions #'tuareg-smie--args nil t)
+    (add-hook 'smie-indent-functions #'tuareg-smie--inside-string nil t)))
 
 ;;;###autoload
 (define-derived-mode ocaml-ts-mode prog-mode "Ocaml"
@@ -234,23 +248,8 @@ See `ff-other-file-alist'."
 
   ;; Indent.
   (if ocaml-ts-mode-tuareg-indentation
-      (progn
-        (setq-local syntax-propertize-function #'tuareg-syntax-propertize)
-        (setq-local parse-sexp-ignore-comments t)
-        (smie-setup tuareg-smie-grammar #'tuareg-smie-rules
-                    :forward-token #'tuareg-smie-forward-token
-                    :backward-token #'tuareg-smie-backward-token)
-        (when (boundp 'smie--hanging-eolp-function)
-          ;; FIXME: As its name implies, smie--hanging-eolp-function
-          ;; is not to be used by packages like us, but SMIE's maintainer
-          ;; hasn't provided any alternative so far :-(
-          (add-function :before (local 'smie--hanging-eolp-function)
-                        #'tuareg--hanging-eolp-advice))
-        (add-function :around (local 'indent-line-function)
-                      #'tuareg--indent-line)
-        (add-hook 'smie-indent-functions #'tuareg-smie--args nil t)
-        (add-hook 'smie-indent-functions #'tuareg-smie--inside-string nil t))
-    (setq-local treesit-simple-indent-rules (ocaml-ts--indent-rules 'ocaml)))
+      (tuareg-smie-setup)
+      (setq-local treesit-simple-indent-rules (ocaml-ts--indent-rules 'ocaml)))
 
   (setq-local comment-start "(* ")
   (setq-local comment-end " *)")
@@ -279,7 +278,7 @@ See `ff-other-file-alist'."
   :syntax-table ocaml-ts-mode--syntax-table
 
   (unless (treesit-ready-p 'ocaml-interface)
-    (error "Tree-sitter for ocaml intefface isn't available"))
+    (error "Tree-sitter for ocaml interface isn't available"))
 
   (treesit-parser-create 'ocaml-interface)
 
@@ -313,6 +312,8 @@ See `ff-other-file-alist'."
 (if (treesit-ready-p 'ocaml-interface)
     (add-to-list 'auto-mode-alist
                  '("\\.mli\\'" . ocamli-ts-mode)))
+
+;; TODO Add major modes for menhir and ocamllex files
 
 (provide 'ocaml-ts-mode)
 
